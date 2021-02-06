@@ -22,8 +22,6 @@
     - docker-ce-19.03.11
     - docker-ce-cli-19.03.11
     - containerd.io-1.2.13
-  notify:
-    - docker status
 
 - name: Create Docker directory
   file:
@@ -67,16 +65,22 @@
     dest: /etc/sysctl.d/k8s.conf
     mode: 0644
 
-- name: Adding apt repository for Kubernetes
+- name: Adding Kubernetes repository
   yum_repository:
-    name: Kubernetes
-    baseurl: https://packages.cloud.google.com/yum/repos/kubernetes-el7-x86_64
+    name: kubernetes
+    description: Kubernetes
+    baseurl: https://packages.cloud.google.com/yum/repos/kubernetes-el7-\$basearch
     enabled: yes
     gpgcheck: yes
     repo_gpgcheck: yes
     gpgkey: https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
     state: present
     file: kubernetes
+    exclude: 
+      - kubelet
+      - kubeadm
+      - kubectl
+
 
 - name: Disable SELinux
   selinux:
@@ -92,6 +96,7 @@
     name: "{{ packages }}"
     state: present
     update_cache: yes
+    disable_excludes: kubernetes
   vars:
     packages:
       - kubelet 
@@ -105,11 +110,5 @@
     state: restarted
     enabled: yes
 
-- name: Initiate Kubernetes
-  command: kubectl init --pod-network-cidr=10.244.0.0/16
-
-- name: Deploy flannel
-  command: kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
 
 
-  
