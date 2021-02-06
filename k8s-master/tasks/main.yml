@@ -1,0 +1,115 @@
+---
+- name: Install yum-utils, device-mapper-persistent-data, and lvm2
+  yum:
+    name: "{{ packages }}"
+    state: present
+  vars:
+    packages:
+    - yum-utils
+    - device-mapper-persistent-data
+    - lvm2
+
+- name: Add Docker repository
+  command: yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+
+- name: Install docker and its dependecies
+  yum: 
+    name: "{{ packages }}"
+    state: present
+    update_cache: yes
+  vars:
+    packages:
+    - docker-ce-19.03.11
+    - docker-ce-cli-19.03.11
+    - containerd.io-1.2.13
+  notify:
+    - docker status
+
+- name: Create Docker directory
+  file:
+    path: /etc/docker
+    state: directory
+
+- name: Add daemon.json template to daemon.json
+  template:
+    src: daemon.json.j2
+    dest: /etc/docker/daemon.json
+
+- name: Start Docker dameon
+  service:
+    name: docker
+    state: restarted
+    daemon_reload: yes
+    enabled: yes
+
+- name: Remove swapfile from /etc/fstab
+  mount:
+    name: "{{ item }}"
+    fstype: swap
+    state: absent
+  with_items:
+    - swap
+    - none
+
+- name: Disable swap
+  command: swapoff -a
+  when: ansible_swaptotal_mb > 0
+
+- name: Apply module_k8s.conf.j2 template
+  template:
+    src: module_k8s.conf.j2
+    dest: /etc/modules-load.d/k8s.conf
+    mode: 0644
+
+- name: Apply sysctl_k8s.conf.j2 template
+  template:
+    src: sysctl_k8s.conf.j2
+    dest: /etc/sysctl.d/k8s.conf
+    mode: 0644
+
+- name: Adding apt repository for Kubernetes
+  yum_repository:
+    name: Kubernetes
+    baseurl: https://packages.cloud.google.com/yum/repos/kubernetes-el7-x86_64
+    enabled: yes
+    gpgcheck: yes
+    repo_gpgcheck: yes
+    gpgkey: https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+    state: present
+    file: kubernetes
+
+- name: Disable SELinux
+  selinux:
+    state: disabled
+
+- name: Put SELinux in permissive mode, logging actions that would be blocked.
+  selinux:
+    policy: targeted
+    state: permissive
+
+- name: Install Kubernetes binaries
+  yum: 
+    name: "{{ packages }}"
+    state: present
+    update_cache: yes
+  vars:
+    packages:
+      - kubelet 
+      - kubeadm 
+      - kubectl
+
+- name: Restart kubelet
+  service:
+    name: kubelet
+    daemon_reload: yes
+    state: restarted
+    enabled: yes
+
+- name: Initiate Kubernetes
+  command: kubectl init --pod-network-cidr=10.244.0.0/16
+
+- name: Deploy flannel
+  command: kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
+
+
+  
